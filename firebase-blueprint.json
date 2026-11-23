@@ -1,0 +1,234 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Akun pengguna aplikasi yang terhubung dengan Firebase Authentication UID",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "nama": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "email": { "type": "string", "minLength": 3, "maxLength": 160 },
+        "username": { "type": "string", "minLength": 2, "maxLength": 64 },
+        "role": { "type": "string", "enum": ["ADMIN", "GURU"] },
+        "teacherId": { "type": "string", "maxLength": 128 },
+        "status": { "type": "string", "enum": ["ACTIVE", "INACTIVE"] },
+        "photoUrl": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "nama", "email", "username", "role", "status", "createdAt", "updatedAt"]
+    },
+    "Teacher": {
+      "title": "Teacher",
+      "description": "Data induk guru dan tenaga kependidikan MIS Darussalam",
+      "type": "object",
+      "properties": {
+        "teacherId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userId": { "type": "string", "maxLength": 128 },
+        "foto": { "type": "string", "maxLength": 500 },
+        "nip": { "type": "string", "maxLength": 40 },
+        "nuptk": { "type": "string", "maxLength": 40 },
+        "nik": { "type": "string", "maxLength": 32 },
+        "namaLengkap": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "jenisKelamin": { "type": "string", "enum": ["L", "P"] },
+        "tempatLahir": { "type": "string", "maxLength": 80 },
+        "tanggalLahir": { "type": "string", "maxLength": 20 },
+        "pendidikanTerakhir": { "type": "string", "maxLength": 40 },
+        "jabatan": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "statusKepegawaian": { "type": "string", "enum": ["PNS", "PPPK", "GTY", "GTT", "Honorer"] },
+        "nomorHp": { "type": "string", "maxLength": 30 },
+        "alamat": { "type": "string", "maxLength": 300 },
+        "email": { "type": "string", "maxLength": 160 },
+        "username": { "type": "string", "maxLength": 64 },
+        "statusAkun": { "type": "string", "enum": ["ACTIVE", "INACTIVE"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["teacherId", "namaLengkap", "jenisKelamin", "jabatan", "statusKepegawaian", "statusAkun", "createdAt", "updatedAt"]
+    },
+    "Student": {
+      "title": "Student",
+      "description": "Data induk peserta didik MIS Darussalam",
+      "type": "object",
+      "properties": {
+        "studentId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "nis": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "nisn": { "type": "string", "maxLength": 40 },
+        "namaLengkap": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "jenisKelamin": { "type": "string", "enum": ["L", "P"] },
+        "tempatLahir": { "type": "string", "maxLength": 80 },
+        "tanggalLahir": { "type": "string", "maxLength": 20 },
+        "agama": { "type": "string", "maxLength": 30 },
+        "alamat": { "type": "string", "maxLength": 300 },
+        "namaAyah": { "type": "string", "maxLength": 100 },
+        "namaIbu": { "type": "string", "maxLength": 100 },
+        "nomorHpOrtu": { "type": "string", "maxLength": 30 },
+        "classId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "kelasNama": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "waliKelasUid": { "type": "string", "maxLength": 128 },
+        "tahunPelajaran": { "type": "string", "minLength": 4, "maxLength": 20 },
+        "status": { "type": "string", "enum": ["AKTIF", "LULUS", "PINDAH", "NONAKTIF"] },
+        "foto": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["studentId", "nis", "namaLengkap", "jenisKelamin", "classId", "kelasNama", "tahunPelajaran", "status", "createdAt", "updatedAt"]
+    },
+    "SchoolClass": {
+      "title": "SchoolClass",
+      "description": "Data rombongan belajar / kelas 1-6 dan wali kelas",
+      "type": "object",
+      "properties": {
+        "classId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "namaRombel": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "kelas": { "type": "number" },
+        "tahunPelajaran": { "type": "string", "minLength": 4, "maxLength": 20 },
+        "waliKelasId": { "type": "string", "maxLength": 128 },
+        "waliKelasUid": { "type": "string", "maxLength": 128 },
+        "waliKelasNama": { "type": "string", "maxLength": 120 },
+        "kapasitas": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["classId", "namaRombel", "kelas", "tahunPelajaran", "kapasitas", "createdAt", "updatedAt"]
+    },
+    "TeacherAttendance": {
+      "title": "TeacherAttendance",
+      "description": "Catatan kehadiran harian guru (ID unik teacherId_tanggal untuk mencegah duplikat)",
+      "type": "object",
+      "properties": {
+        "attendanceId": { "type": "string", "minLength": 1, "maxLength": 160, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "teacherId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "namaGuru": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "nip": { "type": "string", "maxLength": 40 },
+        "tanggal": { "type": "string", "minLength": 10, "maxLength": 10, "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+        "jamMasuk": { "type": "string", "minLength": 1, "maxLength": 16 },
+        "jamPulang": { "type": "string", "maxLength": 16 },
+        "status": { "type": "string", "enum": ["HADIR", "TERLAMBAT", "IZIN", "SAKIT", "DINAS", "ALPA"] },
+        "keterangan": { "type": "string", "maxLength": 300 },
+        "deviceInfo": { "type": "string", "maxLength": 120 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["attendanceId", "teacherId", "userId", "namaGuru", "tanggal", "jamMasuk", "status", "createdAt", "updatedAt"]
+    },
+    "StudentAttendance": {
+      "title": "StudentAttendance",
+      "description": "Catatan kehadiran harian siswa (ID unik studentId_tanggal)",
+      "type": "object",
+      "properties": {
+        "attendanceId": { "type": "string", "minLength": 1, "maxLength": 160, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "studentId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "studentName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "nis": { "type": "string", "maxLength": 40 },
+        "nisn": { "type": "string", "maxLength": 40 },
+        "classId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "kelasNama": { "type": "string", "maxLength": 40 },
+        "waliKelasUid": { "type": "string", "maxLength": 128 },
+        "tanggal": { "type": "string", "minLength": 10, "maxLength": 10, "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+        "status": { "type": "string", "enum": ["H", "S", "I", "A", "D"] },
+        "keterangan": { "type": "string", "maxLength": 300 },
+        "teacherId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "teacherUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["attendanceId", "studentId", "studentName", "classId", "tanggal", "status", "teacherId", "teacherUid", "createdAt", "updatedAt"]
+    },
+    "AcademicYear": {
+      "title": "AcademicYear",
+      "description": "Tahun pelajaran dan semester aktif madrasah",
+      "type": "object",
+      "properties": {
+        "yearId": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "tahunPelajaran": { "type": "string", "minLength": 4, "maxLength": 20 },
+        "semester": { "type": "string", "enum": ["Ganjil", "Genap"] },
+        "isActive": { "type": "boolean" },
+        "tanggalMulai": { "type": "string", "maxLength": 20 },
+        "tanggalSelesai": { "type": "string", "maxLength": 20 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["yearId", "tahunPelajaran", "semester", "isActive", "createdAt", "updatedAt"]
+    },
+    "SchoolSettings": {
+      "title": "SchoolSettings",
+      "description": "Identitas resmi madrasah untuk aplikasi dan kop surat PDF",
+      "type": "object",
+      "properties": {
+        "namaYayasan": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "namaMadrasah": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "nsm": { "type": "string", "maxLength": 40 },
+        "npsm": { "type": "string", "maxLength": 40 },
+        "akreditasi": { "type": "string", "maxLength": 20 },
+        "nomorAkreditasi": { "type": "string", "maxLength": 100 },
+        "alamat": { "type": "string", "maxLength": 300 },
+        "alamatSingkat": { "type": "string", "maxLength": 200 },
+        "telepon": { "type": "string", "maxLength": 40 },
+        "kepalaMadrasah": { "type": "string", "maxLength": 120 },
+        "nipKepalaMadrasah": { "type": "string", "maxLength": 40 },
+        "kota": { "type": "string", "maxLength": 60 },
+        "tahunPelajaranAktif": { "type": "string", "maxLength": 20 },
+        "jamMasukBatas": { "type": "string", "maxLength": 10 },
+        "logoKiriUrl": { "type": "string", "maxLength": 500 },
+        "logoKananUrl": { "type": "string", "maxLength": 500 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["namaYayasan", "namaMadrasah", "nsm", "npsm", "alamat", "updatedAt"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Jejak audit perubahan data sistem yang tidak dapat diubah",
+      "type": "object",
+      "properties": {
+        "logId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "user": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "role": { "type": "string", "enum": ["ADMIN", "GURU"] },
+        "aktivitas": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "data": { "type": "string", "maxLength": 500 },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["logId", "user", "uid", "role", "aktivitas", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Profil akun pengguna dan otorisasi peran ADMIN atau GURU"
+    },
+    "/teachers/{teacherId}": {
+      "schema": { "$ref": "#/entities/Teacher" },
+      "description": "Koleksi data guru dan pegawai MIS Darussalam"
+    },
+    "/students/{studentId}": {
+      "schema": { "$ref": "#/entities/Student" },
+      "description": "Koleksi data siswa MIS Darussalam"
+    },
+    "/classes/{classId}": {
+      "schema": { "$ref": "#/entities/SchoolClass" },
+      "description": "Koleksi data kelas dan rombongan belajar"
+    },
+    "/teacher_attendance/{attendanceId}": {
+      "schema": { "$ref": "#/entities/TeacherAttendance" },
+      "description": "Koleksi absensi harian guru dengan ID deterministik teacherId_tanggal"
+    },
+    "/student_attendance/{attendanceId}": {
+      "schema": { "$ref": "#/entities/StudentAttendance" },
+      "description": "Koleksi absensi harian siswa dengan ID deterministik studentId_tanggal"
+    },
+    "/academic_years/{yearId}": {
+      "schema": { "$ref": "#/entities/AcademicYear" },
+      "description": "Koleksi tahun pelajaran madrasah"
+    },
+    "/school_settings/{settingId}": {
+      "schema": { "$ref": "#/entities/SchoolSettings" },
+      "description": "Pengaturan identitas madrasah, kop surat, dan penanda setup admin awal"
+    },
+    "/audit_logs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Koleksi catatan aktivitas penting sistem (append-only)"
+    }
+  }
+}

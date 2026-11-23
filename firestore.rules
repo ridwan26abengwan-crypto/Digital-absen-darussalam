@@ -1,0 +1,449 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Primitive Helpers ---
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 160 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isBootstrapAdmin() {
+      return isSignedIn() &&
+        request.auth.token.email == 'rdwanwannn@gmail.com' &&
+        request.auth.token.email_verified == true;
+    }
+
+    function userExists() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return isBootstrapAdmin() || (
+        userExists() &&
+        userDoc().role == 'ADMIN' &&
+        userDoc().status == 'ACTIVE'
+      );
+    }
+
+    function isActiveGuru() {
+      return userExists() &&
+        userDoc().role == 'GURU' &&
+        userDoc().status == 'ACTIVE';
+    }
+
+    function isOptionalString(data, field, maxLen) {
+      return !(field in data) || (data[field] is string && data[field].size() <= maxLen);
+    }
+
+    // --- Entity Validation Blueprints ---
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'nama', 'email', 'username', 'role', 'status', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['uid', 'nama', 'email', 'username', 'role', 'teacherId', 'status', 'photoUrl', 'createdAt', 'updatedAt']) &&
+        isValidId(data.uid) &&
+        data.nama is string && data.nama.size() >= 1 && data.nama.size() <= 120 &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 160 &&
+        data.username is string && data.username.size() >= 2 && data.username.size() <= 64 &&
+        data.role in ['ADMIN', 'GURU'] &&
+        data.status in ['ACTIVE', 'INACTIVE'] &&
+        isOptionalString(data, 'teacherId', 128) &&
+        isOptionalString(data, 'photoUrl', 500) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidTeacher(data) {
+      return data.keys().hasAll(['teacherId', 'namaLengkap', 'jenisKelamin', 'jabatan', 'statusKepegawaian', 'statusAkun', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly([
+          'teacherId', 'userId', 'foto', 'nip', 'nuptk', 'nik', 'namaLengkap',
+          'jenisKelamin', 'tempatLahir', 'tanggalLahir', 'pendidikanTerakhir',
+          'jabatan', 'statusKepegawaian', 'nomorHp', 'alamat', 'email',
+          'username', 'statusAkun', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.teacherId) &&
+        isOptionalString(data, 'userId', 128) &&
+        isOptionalString(data, 'foto', 500) &&
+        isOptionalString(data, 'nip', 40) &&
+        isOptionalString(data, 'nuptk', 40) &&
+        isOptionalString(data, 'nik', 32) &&
+        data.namaLengkap is string && data.namaLengkap.size() >= 1 && data.namaLengkap.size() <= 120 &&
+        data.jenisKelamin in ['L', 'P'] &&
+        isOptionalString(data, 'tempatLahir', 80) &&
+        isOptionalString(data, 'tanggalLahir', 20) &&
+        isOptionalString(data, 'pendidikanTerakhir', 40) &&
+        data.jabatan is string && data.jabatan.size() >= 1 && data.jabatan.size() <= 80 &&
+        data.statusKepegawaian in ['PNS', 'PPPK', 'GTY', 'GTT', 'Honorer'] &&
+        isOptionalString(data, 'nomorHp', 30) &&
+        isOptionalString(data, 'alamat', 300) &&
+        isOptionalString(data, 'email', 160) &&
+        isOptionalString(data, 'username', 64) &&
+        data.statusAkun in ['ACTIVE', 'INACTIVE'] &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidStudent(data) {
+      return data.keys().hasAll(['studentId', 'nis', 'namaLengkap', 'jenisKelamin', 'classId', 'kelasNama', 'tahunPelajaran', 'status', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly([
+          'studentId', 'nis', 'nisn', 'namaLengkap', 'jenisKelamin',
+          'tempatLahir', 'tanggalLahir', 'agama', 'alamat', 'namaAyah',
+          'namaIbu', 'nomorHpOrtu', 'classId', 'kelasNama', 'waliKelasUid',
+          'tahunPelajaran', 'status', 'foto', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.studentId) &&
+        data.nis is string && data.nis.size() >= 1 && data.nis.size() <= 40 &&
+        isOptionalString(data, 'nisn', 40) &&
+        data.namaLengkap is string && data.namaLengkap.size() >= 1 && data.namaLengkap.size() <= 120 &&
+        data.jenisKelamin in ['L', 'P'] &&
+        isOptionalString(data, 'tempatLahir', 80) &&
+        isOptionalString(data, 'tanggalLahir', 20) &&
+        isOptionalString(data, 'agama', 30) &&
+        isOptionalString(data, 'alamat', 300) &&
+        isOptionalString(data, 'namaAyah', 100) &&
+        isOptionalString(data, 'namaIbu', 100) &&
+        isOptionalString(data, 'nomorHpOrtu', 30) &&
+        isValidId(data.classId) &&
+        data.kelasNama is string && data.kelasNama.size() >= 1 && data.kelasNama.size() <= 40 &&
+        isOptionalString(data, 'waliKelasUid', 128) &&
+        data.tahunPelajaran is string && data.tahunPelajaran.size() >= 4 && data.tahunPelajaran.size() <= 20 &&
+        data.status in ['AKTIF', 'LULUS', 'PINDAH', 'NONAKTIF'] &&
+        isOptionalString(data, 'foto', 500) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidClass(data) {
+      return data.keys().hasAll(['classId', 'namaRombel', 'kelas', 'tahunPelajaran', 'kapasitas', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['classId', 'namaRombel', 'kelas', 'tahunPelajaran', 'waliKelasId', 'waliKelasUid', 'waliKelasNama', 'kapasitas', 'createdAt', 'updatedAt']) &&
+        isValidId(data.classId) &&
+        data.namaRombel is string && data.namaRombel.size() >= 1 && data.namaRombel.size() <= 40 &&
+        data.kelas is int && data.kelas >= 1 && data.kelas <= 6 &&
+        data.tahunPelajaran is string && data.tahunPelajaran.size() >= 4 && data.tahunPelajaran.size() <= 20 &&
+        isOptionalString(data, 'waliKelasId', 128) &&
+        isOptionalString(data, 'waliKelasUid', 128) &&
+        isOptionalString(data, 'waliKelasNama', 120) &&
+        data.kapasitas is int && data.kapasitas >= 1 && data.kapasitas <= 100 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidTeacherAttendance(data) {
+      return data.keys().hasAll(['attendanceId', 'teacherId', 'userId', 'namaGuru', 'tanggal', 'jamMasuk', 'status', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['attendanceId', 'teacherId', 'userId', 'namaGuru', 'nip', 'tanggal', 'jamMasuk', 'jamPulang', 'status', 'keterangan', 'deviceInfo', 'createdAt', 'updatedAt']) &&
+        isValidId(data.attendanceId) &&
+        isValidId(data.teacherId) &&
+        isValidId(data.userId) &&
+        data.namaGuru is string && data.namaGuru.size() >= 1 && data.namaGuru.size() <= 120 &&
+        isOptionalString(data, 'nip', 40) &&
+        data.tanggal is string && data.tanggal.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+        data.jamMasuk is string && data.jamMasuk.size() >= 1 && data.jamMasuk.size() <= 16 &&
+        isOptionalString(data, 'jamPulang', 16) &&
+        data.status in ['HADIR', 'TERLAMBAT', 'IZIN', 'SAKIT', 'DINAS', 'ALPA'] &&
+        isOptionalString(data, 'keterangan', 300) &&
+        isOptionalString(data, 'deviceInfo', 120) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidStudentAttendance(data) {
+      return data.keys().hasAll(['attendanceId', 'studentId', 'studentName', 'classId', 'tanggal', 'status', 'teacherId', 'teacherUid', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['attendanceId', 'studentId', 'studentName', 'nis', 'nisn', 'classId', 'kelasNama', 'waliKelasUid', 'tanggal', 'status', 'keterangan', 'teacherId', 'teacherUid', 'createdAt', 'updatedAt']) &&
+        isValidId(data.attendanceId) &&
+        isValidId(data.studentId) &&
+        data.studentName is string && data.studentName.size() >= 1 && data.studentName.size() <= 120 &&
+        isOptionalString(data, 'nis', 40) &&
+        isOptionalString(data, 'nisn', 40) &&
+        isValidId(data.classId) &&
+        isOptionalString(data, 'kelasNama', 40) &&
+        isOptionalString(data, 'waliKelasUid', 128) &&
+        data.tanggal is string && data.tanggal.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+        data.status in ['H', 'S', 'I', 'A', 'D'] &&
+        isOptionalString(data, 'keterangan', 300) &&
+        isValidId(data.teacherId) &&
+        isValidId(data.teacherUid) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidAcademicYear(data) {
+      return data.keys().hasAll(['yearId', 'tahunPelajaran', 'semester', 'isActive', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['yearId', 'tahunPelajaran', 'semester', 'isActive', 'tanggalMulai', 'tanggalSelesai', 'createdAt', 'updatedAt']) &&
+        isValidId(data.yearId) &&
+        data.tahunPelajaran is string && data.tahunPelajaran.size() >= 4 && data.tahunPelajaran.size() <= 20 &&
+        data.semester in ['Ganjil', 'Genap'] &&
+        data.isActive is bool &&
+        isOptionalString(data, 'tanggalMulai', 20) &&
+        isOptionalString(data, 'tanggalSelesai', 20) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidSchoolSettings(data) {
+      return data.keys().hasAll(['namaYayasan', 'namaMadrasah', 'nsm', 'npsm', 'alamat', 'updatedAt']) &&
+        data.keys().hasOnly([
+          'namaYayasan', 'namaMadrasah', 'nsm', 'npsm', 'akreditasi', 'nomorAkreditasi',
+          'alamat', 'alamatSingkat', 'telepon', 'kepalaMadrasah', 'nipKepalaMadrasah',
+          'kota', 'tahunPelajaranAktif', 'jamMasukBatas', 'logoKiriUrl', 'logoKananUrl', 'updatedAt'
+        ]) &&
+        data.namaYayasan is string && data.namaYayasan.size() >= 1 && data.namaYayasan.size() <= 160 &&
+        data.namaMadrasah is string && data.namaMadrasah.size() >= 1 && data.namaMadrasah.size() <= 160 &&
+        data.nsm is string && data.nsm.size() <= 40 &&
+        data.npsm is string && data.npsm.size() <= 40 &&
+        isOptionalString(data, 'akreditasi', 20) &&
+        isOptionalString(data, 'nomorAkreditasi', 100) &&
+        data.alamat is string && data.alamat.size() >= 1 && data.alamat.size() <= 300 &&
+        isOptionalString(data, 'alamatSingkat', 200) &&
+        isOptionalString(data, 'telepon', 40) &&
+        isOptionalString(data, 'kepalaMadrasah', 120) &&
+        isOptionalString(data, 'nipKepalaMadrasah', 40) &&
+        isOptionalString(data, 'kota', 60) &&
+        isOptionalString(data, 'tahunPelajaranAktif', 20) &&
+        isOptionalString(data, 'jamMasukBatas', 10) &&
+        isOptionalString(data, 'logoKiriUrl', 500) &&
+        isOptionalString(data, 'logoKananUrl', 500) &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidAuditLog(data) {
+      return data.keys().hasAll(['logId', 'user', 'uid', 'role', 'aktivitas', 'timestamp']) &&
+        data.keys().hasOnly(['logId', 'user', 'uid', 'role', 'aktivitas', 'data', 'timestamp']) &&
+        isValidId(data.logId) &&
+        data.user is string && data.user.size() >= 1 && data.user.size() <= 120 &&
+        isValidId(data.uid) &&
+        data.role in ['ADMIN', 'GURU'] &&
+        data.aktivitas is string && data.aktivitas.size() >= 1 && data.aktivitas.size() <= 200 &&
+        isOptionalString(data, 'data', 500) &&
+        data.timestamp is timestamp;
+    }
+
+    // --- Collection Rules ---
+
+    // 1. Users
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isSignedIn() && isValidId(userId) && isValidUser(incoming()) &&
+        incoming().uid == userId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time && (
+          isAdmin() || (
+            request.auth.uid == userId &&
+            incoming().role == 'ADMIN' &&
+            incoming().status == 'ACTIVE' &&
+            !exists(/databases/$(database)/documents/school_settings/admin_claimed) &&
+            getAfter(/databases/$(database)/documents/school_settings/admin_claimed).data.claimedByUid == request.auth.uid
+          )
+        );
+      allow update: if isSignedIn() && isValidId(userId) && isValidUser(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          isAdmin() || (
+            request.auth.uid == userId &&
+            incoming().role == existing().role &&
+            incoming().status == existing().status &&
+            incoming().teacherId == existing().teacherId &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['nama', 'photoUrl', 'updatedAt'])
+          )
+        );
+      allow delete: if isAdmin() && isValidId(userId) && userId != request.auth.uid;
+    }
+
+    // 2. Teachers
+    match /teachers/{teacherId} {
+      allow get: if isSignedIn() && isValidId(teacherId) && (
+        isAdmin() || (isActiveGuru() && existing().userId == request.auth.uid)
+      );
+      allow list: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isAdmin() && isValidId(teacherId) && isValidTeacher(incoming()) &&
+        incoming().teacherId == teacherId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isSignedIn() && isValidId(teacherId) && isValidTeacher(incoming()) &&
+        incoming().teacherId == existing().teacherId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          isAdmin() || (
+            isActiveGuru() &&
+            existing().userId == request.auth.uid &&
+            incoming().userId == existing().userId &&
+            incoming().statusAkun == existing().statusAkun &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['nomorHp', 'alamat', 'foto', 'updatedAt'])
+          )
+        );
+      allow delete: if isAdmin() && isValidId(teacherId);
+    }
+
+    // 3. Students
+    match /students/{studentId} {
+      allow get: if isSignedIn() && isValidId(studentId) && (
+        isAdmin() || (isActiveGuru() && existing().waliKelasUid == request.auth.uid)
+      );
+      allow list: if isAdmin() || (isSignedIn() && resource.data.waliKelasUid == request.auth.uid);
+      allow create: if isAdmin() && isValidId(studentId) && isValidStudent(incoming()) &&
+        incoming().studentId == studentId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        exists(/databases/$(database)/documents/classes/$(incoming().classId));
+      allow update: if isAdmin() && isValidId(studentId) && isValidStudent(incoming()) &&
+        incoming().studentId == existing().studentId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        exists(/databases/$(database)/documents/classes/$(incoming().classId));
+      allow delete: if isAdmin() && isValidId(studentId);
+    }
+
+    // 4. Classes / Rombel
+    match /classes/{classId} {
+      allow get: if isSignedIn() && isValidId(classId) && (
+        isAdmin() || (isActiveGuru() && existing().waliKelasUid == request.auth.uid)
+      );
+      allow list: if isAdmin() || (isSignedIn() && resource.data.waliKelasUid == request.auth.uid);
+      allow create: if isAdmin() && isValidId(classId) && isValidClass(incoming()) &&
+        incoming().classId == classId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isAdmin() && isValidId(classId) && isValidClass(incoming()) &&
+        incoming().classId == existing().classId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time;
+      allow delete: if isAdmin() && isValidId(classId);
+    }
+
+    // 5. Teacher Attendance (Unique teacherId + tanggal)
+    match /teacher_attendance/{attendanceId} {
+      allow get: if isSignedIn() && isValidId(attendanceId) && (
+        isAdmin() || (isActiveGuru() && existing().userId == request.auth.uid)
+      );
+      allow list: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn() && isValidId(attendanceId) && isValidTeacherAttendance(incoming()) &&
+        incoming().attendanceId == attendanceId &&
+        attendanceId == incoming().teacherId + '_' + incoming().tanggal &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        exists(/databases/$(database)/documents/teachers/$(incoming().teacherId)) && (
+          isAdmin() || (
+            isActiveGuru() &&
+            incoming().userId == request.auth.uid &&
+            get(/databases/$(database)/documents/teachers/$(incoming().teacherId)).data.userId == request.auth.uid
+          )
+        );
+      allow update: if isSignedIn() && isValidId(attendanceId) && isValidTeacherAttendance(incoming()) &&
+        incoming().attendanceId == existing().attendanceId &&
+        incoming().teacherId == existing().teacherId &&
+        incoming().userId == existing().userId &&
+        incoming().tanggal == existing().tanggal &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          isAdmin() || (
+            isActiveGuru() &&
+            existing().userId == request.auth.uid &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['jamPulang', 'keterangan', 'updatedAt'])
+          )
+        );
+      allow delete: if isAdmin() && isValidId(attendanceId);
+    }
+
+    // 6. Student Attendance (Unique studentId + tanggal)
+    match /student_attendance/{attendanceId} {
+      allow get: if isSignedIn() && isValidId(attendanceId) && (
+        isAdmin() || (isActiveGuru() && (existing().teacherUid == request.auth.uid || existing().waliKelasUid == request.auth.uid))
+      );
+      allow list: if isAdmin() || (isSignedIn() && (resource.data.teacherUid == request.auth.uid || resource.data.waliKelasUid == request.auth.uid));
+      allow create: if isSignedIn() && isValidId(attendanceId) && isValidStudentAttendance(incoming()) &&
+        incoming().attendanceId == attendanceId &&
+        attendanceId == incoming().studentId + '_' + incoming().tanggal &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        exists(/databases/$(database)/documents/students/$(incoming().studentId)) && (
+          isAdmin() || (
+            isActiveGuru() &&
+            incoming().teacherUid == request.auth.uid &&
+            get(/databases/$(database)/documents/students/$(incoming().studentId)).data.waliKelasUid == request.auth.uid
+          )
+        );
+      allow update: if isSignedIn() && isValidId(attendanceId) && isValidStudentAttendance(incoming()) &&
+        incoming().attendanceId == existing().attendanceId &&
+        incoming().studentId == existing().studentId &&
+        incoming().classId == existing().classId &&
+        incoming().tanggal == existing().tanggal &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          isAdmin() || (
+            isActiveGuru() &&
+            (existing().teacherUid == request.auth.uid || existing().waliKelasUid == request.auth.uid) &&
+            incoming().teacherUid == request.auth.uid &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'keterangan', 'teacherId', 'teacherUid', 'updatedAt'])
+          )
+        );
+      allow delete: if isAdmin() && isValidId(attendanceId);
+    }
+
+    // 7. Academic Years
+    match /academic_years/{yearId} {
+      allow get, list: if isSignedIn();
+      allow create: if isAdmin() && isValidId(yearId) && isValidAcademicYear(incoming()) &&
+        incoming().yearId == yearId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isAdmin() && isValidId(yearId) && isValidAcademicYear(incoming()) &&
+        incoming().yearId == existing().yearId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time;
+      allow delete: if isAdmin() && isValidId(yearId);
+    }
+
+    // 8. School Settings
+    match /school_settings/admin_claimed {
+      allow get: if isSignedIn();
+      allow create: if isSignedIn() &&
+        !exists(/databases/$(database)/documents/school_settings/admin_claimed) &&
+        incoming().keys().hasAll(['claimedByUid', 'claimedAt']) &&
+        incoming().keys().hasOnly(['claimedByUid', 'claimedAt']) &&
+        incoming().claimedByUid == request.auth.uid &&
+        incoming().claimedAt == request.time &&
+        getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'ADMIN';
+      allow update, delete: if false;
+    }
+
+    match /school_settings/{settingId} {
+      allow get: if isSignedIn() && isValidId(settingId) && settingId != 'admin_claimed';
+      allow list: if isAdmin();
+      allow create, update: if isAdmin() && isValidId(settingId) && settingId != 'admin_claimed' &&
+        isValidSchoolSettings(incoming()) &&
+        incoming().updatedAt == request.time;
+      allow delete: if false;
+    }
+
+    // 9. Audit Logs (Append-Only)
+    match /audit_logs/{logId} {
+      allow get, list: if isAdmin();
+      allow create: if isSignedIn() && isValidId(logId) && isValidAuditLog(incoming()) &&
+        incoming().logId == logId &&
+        incoming().uid == request.auth.uid &&
+        incoming().timestamp == request.time;
+      allow update, delete: if false;
+    }
+  }
+}

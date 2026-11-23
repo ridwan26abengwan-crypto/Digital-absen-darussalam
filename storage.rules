@@ -1,0 +1,42 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        (request.auth.token.email == 'rdwanwannn@gmail.com' && request.auth.token.email_verified == true) ||
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'ADMIN'
+      );
+    }
+
+    function isImageOrDoc() {
+      return request.resource.size < 5 * 1024 * 1024 &&
+        (request.resource.contentType.matches('image/.*') ||
+         request.resource.contentType == 'application/pdf');
+    }
+
+    match /logo/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() && isImageOrDoc();
+    }
+
+    match /teachers/{teacherId}/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if (isAdmin() || isSignedIn()) && request.resource.size < 3 * 1024 * 1024 && request.resource.contentType.matches('image/.*');
+    }
+
+    match /students/{studentId}/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() && request.resource.size < 3 * 1024 * 1024 && request.resource.contentType.matches('image/.*');
+    }
+
+    match /documents/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() && isImageOrDoc();
+    }
+  }
+}

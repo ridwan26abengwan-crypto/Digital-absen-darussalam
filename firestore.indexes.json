@@ -1,0 +1,37 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "teacher_attendance",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "tanggal", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "teacher_attendance",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tanggal", "order": "DESCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "student_attendance",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "waliKelasUid", "order": "ASCENDING" },
+        { "fieldPath": "tanggal", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "student_attendance",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "classId", "order": "ASCENDING" },
+        { "fieldPath": "tanggal", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

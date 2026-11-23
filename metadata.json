@@ -1,0 +1,6 @@
+{
+  "name": "MIS DARUSSALAM ABSENSI DIGITAL",
+  "description": "Sistem Administrasi dan Absensi Digital Cloud Realtime untuk Madrasah Ibtidaiyah Darussalam (YPI-DTQ).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
