@@ -29,6 +29,7 @@ import {
 import { ensureDefaultSchoolDocs, writeAuditLog } from '../services/firestoreService';
 import type { UserProfile } from '../types';
 import { normalizeLoginIdentifier, sanitizeString } from '../utils/attendanceLogic';
+import { translateFirebaseAuthError, type AuthGuidanceType } from '../utils/authErrorMessages';
 
 interface AuthContextValue {
   firebaseUser: User | null;
@@ -36,6 +37,7 @@ interface AuthContextValue {
   authReady: boolean;
   authError: string | null;
   providerNeedsConsoleEnable: boolean;
+  authGuidance: AuthGuidanceType;
   clearAuthError: () => void;
   loginWithIdentifier: (identifier: string, password: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
@@ -53,42 +55,16 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 const BOOTSTRAP_ADMIN_EMAIL = 'rdwanwannn@gmail.com';
 
-function translateAuthError(code: string): { message: string; needsProviderEnable: boolean } {
-  switch (code) {
-    case 'auth/operation-not-allowed':
-      return {
-        message:
-          'Metode Email/Password belum diaktifkan di Firebase Console proyek ini. Aktifkan di Firebase Console -> Authentication -> Sign-in method -> Email/Password, atau gunakan Masuk dengan Google.',
-        needsProviderEnable: true,
-      };
-    case 'auth/invalid-credential':
-    case 'auth/wrong-password':
-    case 'auth/user-not-found':
-      return {
-        message: 'Username/Email atau kata sandi tidak sesuai.',
-        needsProviderEnable: false,
-      };
-    case 'auth/email-already-in-use':
-      return {
-        message: 'Email atau username sudah terdaftar pada akun lain.',
-        needsProviderEnable: false,
-      };
-    case 'auth/too-many-requests':
-      return {
-        message: 'Terlalu banyak percobaan login. Silakan tunggu beberapa menit.',
-        needsProviderEnable: false,
-      };
-    case 'auth/popup-closed-by-user':
-      return {
-        message: 'Jendela login Google ditutup sebelum selesai.',
-        needsProviderEnable: false,
-      };
-    default:
-      return {
-        message: 'Terjadi gangguan autentikasi. Periksa koneksi atau konfigurasi akun Anda.',
-        needsProviderEnable: false,
-      };
+function extractErrorCode(err: unknown): string {
+  const rawCode = (err as { code?: string })?.code;
+  if (typeof rawCode === 'string' && rawCode.trim()) {
+    return rawCode.trim();
   }
+  const msg = err instanceof Error ? err.message : String(err ?? '');
+  if (msg.includes('permission-denied') || msg.includes('Missing or insufficient permissions')) {
+    return 'permission-denied';
+  }
+  return '';
 }
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -97,6 +73,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [authReady, setAuthReady] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [providerNeedsConsoleEnable, setProviderNeedsConsoleEnable] = useState(false);
+  const [authGuidance, setAuthGuidance] = useState<AuthGuidanceType>(null);
 
   useEffect(() => {
     void testConnection();
@@ -148,6 +125,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       } catch (err) {
         console.error('Error checking initial user profile:', err);
+        const code = extractErrorCode(err);
+        if (code) {
+          const translated = translateFirebaseAuthError(
+            code,
+            typeof window !== 'undefined' ? window.location.hostname : ''
+          );
+          setAuthError(translated.message);
+          setProviderNeedsConsoleEnable(translated.needsProviderEnable);
+          setAuthGuidance(translated.guidance);
+        }
       }
 
       unsubProfile = onSnapshot(
@@ -183,6 +170,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const clearAuthError = () => {
     setAuthError(null);
     setProviderNeedsConsoleEnable(false);
+    setAuthGuidance(null);
+  };
+
+  const applyTranslatedError = (code: string) => {
+    const translated = translateFirebaseAuthError(
+      code,
+      typeof window !== 'undefined' ? window.location.hostname : ''
+    );
+    setAuthError(translated.message);
+    setProviderNeedsConsoleEnable(translated.needsProviderEnable);
+    setAuthGuidance(translated.guidance);
   };
 
   const loginWithIdentifier = async (identifier: string, password: string) => {
@@ -202,19 +200,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setAuthError('Akun Anda berstatus nonaktif. Hubungi Admin Madrasah.');
         throw new Error('ACCOUNT_INACTIVE');
       }
-      await writeAuditLog({
-        user: profile.nama,
-        uid: profile.uid,
-        role: profile.role,
-        aktivitas: 'Login ke sistem',
-        data: `Perangkat: ${navigator.userAgent.slice(0, 80)}`,
-      });
+      try {
+        await writeAuditLog({
+          user: profile.nama,
+          uid: profile.uid,
+          role: profile.role,
+          aktivitas: 'Login ke sistem',
+          data: `Perangkat: ${navigator.userAgent.slice(0, 80)}`,
+        });
+      } catch {
+        // Non-fatal audit failure
+      }
     } catch (err: unknown) {
-      const code = (err as { code?: string })?.code ?? '';
+      const code = extractErrorCode(err);
       if (code) {
-        const translated = translateAuthError(code);
-        setAuthError(translated.message);
-        setProviderNeedsConsoleEnable(translated.needsProviderEnable);
+        applyTranslatedError(code);
       }
       throw err;
     }
@@ -239,19 +239,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setAuthError('Akun Anda berstatus nonaktif. Hubungi Admin Madrasah.');
           throw new Error('ACCOUNT_INACTIVE');
         }
-        await writeAuditLog({
-          user: profile.nama,
-          uid: profile.uid,
-          role: profile.role,
-          aktivitas: 'Login melalui Google Auth',
-          data: profile.email,
-        });
+        try {
+          await writeAuditLog({
+            user: profile.nama,
+            uid: profile.uid,
+            role: profile.role,
+            aktivitas: 'Login melalui Google Auth',
+            data: profile.email,
+          });
+        } catch {
+          // Non-fatal audit failure
+        }
       }
     } catch (err: unknown) {
-      const code = (err as { code?: string })?.code ?? '';
+      const code = extractErrorCode(err);
       if (code) {
-        const translated = translateAuthError(code);
-        setAuthError(translated.message);
+        applyTranslatedError(code);
       }
       throw err;
     }
@@ -267,8 +270,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const authEmail = params.email?.trim()
       ? params.email.trim().toLowerCase()
       : normalizeLoginIdentifier(params.username);
+    let createdAuthUser: User | null = null;
+    let committedAdminProfile = false;
     try {
       const cred = await createUserWithEmailAndPassword(auth, authEmail, params.password);
+      createdAuthUser = cred.user;
       const uid = cred.user.uid;
       const batch = writeBatch(db);
       batch.set(doc(db, 'users', uid), {
@@ -288,24 +294,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         claimedAt: serverTimestamp(),
       });
       await batch.commit();
+      committedAdminProfile = true;
       await ensureDefaultSchoolDocs({
         user: params.nama,
         uid,
         role: 'ADMIN',
       });
-      await writeAuditLog({
-        user: params.nama,
-        uid,
-        role: 'ADMIN',
-        aktivitas: 'Melakukan First Admin Setup',
-        data: params.username,
-      });
+      try {
+        await writeAuditLog({
+          user: params.nama,
+          uid,
+          role: 'ADMIN',
+          aktivitas: 'Melakukan First Admin Setup',
+          data: params.username,
+        });
+      } catch {
+        // Non-fatal audit failure
+      }
     } catch (err: unknown) {
-      const code = (err as { code?: string })?.code ?? '';
+      if (createdAuthUser && !committedAdminProfile) {
+        try {
+          await createdAuthUser.delete();
+        } catch {
+          await signOut(auth).catch(() => {});
+        }
+      }
+      const code = extractErrorCode(err);
       if (code) {
-        const translated = translateAuthError(code);
-        setAuthError(translated.message);
-        setProviderNeedsConsoleEnable(translated.needsProviderEnable);
+        applyTranslatedError(code);
       } else {
         setAuthError(
           'Setup Admin Awal gagal. Kemungkinan akun Admin pertama sudah diklaim sebelumnya.'
@@ -359,6 +375,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         authReady,
         authError,
         providerNeedsConsoleEnable,
+        authGuidance,
         clearAuthError,
         loginWithIdentifier,
         loginWithGoogle,

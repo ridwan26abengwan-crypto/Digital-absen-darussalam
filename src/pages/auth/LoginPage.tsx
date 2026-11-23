@@ -35,6 +35,7 @@ export const LoginPage: React.FC = () => {
     authReady,
     authError,
     providerNeedsConsoleEnable,
+    authGuidance,
     clearAuthError,
     loginWithIdentifier,
     loginWithGoogle,
@@ -279,15 +280,57 @@ export const LoginPage: React.FC = () => {
             </div>
 
             {authError && (
-              <div className="mb-5 rounded-xl border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/60 p-3.5 text-xs text-rose-800 dark:text-rose-200 space-y-2">
+              <div
+                role="alert"
+                className="mb-5 rounded-xl border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/60 p-3.5 text-xs text-rose-800 dark:text-rose-200 space-y-2"
+              >
                 <div className="flex items-start gap-2.5">
                   <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600 dark:text-rose-400" />
                   <p className="leading-relaxed">{authError}</p>
                 </div>
-                {providerNeedsConsoleEnable && (
+                {(providerNeedsConsoleEnable || authGuidance === 'provider') && (
+                  <div className="pl-6 space-y-1 text-[11px] text-rose-700 dark:text-rose-300">
+                    <p>
+                      1. Buka{' '}
+                      <a
+                        href="https://console.firebase.google.com/project/awesome-incentive-c5v9p/authentication/providers"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-semibold underline hover:text-rose-900 dark:hover:text-white"
+                      >
+                        Firebase Console → Sign-in method
+                      </a>{' '}
+                      lalu aktifkan provider <strong>Email/Password</strong>.
+                    </p>
+                    <p>
+                      2. Atau langsung klik tombol <strong>Masuk dengan Akun Google</strong> di
+                      bawah menggunakan akun <span className="font-mono">rdwanwannn@gmail.com</span>{' '}
+                      untuk akses Admin instan.
+                    </p>
+                  </div>
+                )}
+                {authGuidance === 'domain' && typeof window !== 'undefined' && (
+                  <div className="pl-6 space-y-1 text-[11px] text-rose-700 dark:text-rose-300">
+                    <p>
+                      Buka{' '}
+                      <a
+                        href="https://console.firebase.google.com/project/awesome-incentive-c5v9p/authentication/settings"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-semibold underline hover:text-rose-900 dark:hover:text-white"
+                      >
+                        Firebase Console → Authentication → Settings → Authorized domains
+                      </a>{' '}
+                      lalu tambahkan domain:{' '}
+                      <span className="font-mono font-semibold">{window.location.hostname}</span>
+                    </p>
+                  </div>
+                )}
+                {authGuidance === 'google-bootstrap' && (
                   <p className="pl-6 text-[11px] text-rose-700 dark:text-rose-300">
-                    Panduan: Buka Firebase Console → Authentication → Sign-in method → Tambahkan
-                    provider <strong>Email/Password</strong> dan aktifkan, lalu coba kembali.
+                    Tip: Jika menggunakan email <span className="font-mono">rdwanwannn@gmail.com</span>,
+                    klik tombol <strong>Masuk dengan Akun Google</strong> di bawah agar profil
+                    Admin MIS DARUSSALAM aktif otomatis.
                   </p>
                 )}
               </div>
