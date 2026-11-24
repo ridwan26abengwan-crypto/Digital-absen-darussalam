@@ -1,6 +1,6 @@
 {
   "name": "digital-absen-darussalam",
-  "compatibility_date": "2026-01-01",
+  "compatibility_date": "2025-02-01",
   "assets": {
     "directory": "./dist",
     "not_found_handling": "single-page-application"

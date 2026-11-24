@@ -33,11 +33,11 @@ Sistem administrasi dan absensi digital berbasis cloud realtime untuk **Madrasah
    npm run build
    ```
 4. **Deploy ke Cloudflare Workers (`workers.dev`)**:
-   - Konfigurasi sudah tersedia di `wrangler.jsonc`, `public/_redirects`, dan `public/_headers`.
+   - Konfigurasi sudah tersedia di `wrangler.jsonc` (`"not_found_handling": "single-page-application"`) dan `public/_headers`.
    - Build Command: `npm run build` · Deploy Command: `npx wrangler deploy` (output directory `dist`).
    - Wajib tambahkan domain `digital-absen-darussalam.ridwan26abengwan.workers.dev` pada **Firebase Console → Authentication → Settings → Authorized domains** agar login Google berfungsi.
 5. **Deploy ke Vercel**:
-   - Hubungkan repositori ke Vercel, atur Build Command `npm run build` dan Output Directory `dist`.
+   - Konfigurasi SPA sudah tersedia di `vercel.json`. Hubungkan repositori ke Vercel, atur Build Command `npm run build` dan Output Directory `dist`.
 6. **Deploy ke Firebase Hosting**:
    ```bash
    firebase deploy
