@@ -1,6 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { translateFirebaseAuthError } from './authErrorMessages.ts';
+import {
+  extractFirebaseErrorCode,
+  formatReadableServiceError,
+  translateFirebaseAuthError,
+} from './authErrorMessages.ts';
 
 describe('translateFirebaseAuthError', () => {
   it('flags provider enable guidance on operation-not-allowed and configuration-not-found', () => {
@@ -36,5 +40,19 @@ describe('translateFirebaseAuthError', () => {
     const res = translateFirebaseAuthError('auth/internal-error');
     assert.equal(res.guidance, null);
     assert.match(res.message, /auth\/internal-error/);
+  });
+
+  it('extracts auth codes embedded in wrapped FirestoreErrorInfo JSON strings', () => {
+    const wrapped = new Error(
+      JSON.stringify({
+        error: 'Firebase: Error (auth/operation-not-allowed).',
+        operationType: 'create',
+        path: 'teachers/tch_123',
+      })
+    );
+    assert.equal(extractFirebaseErrorCode(wrapped), 'auth/operation-not-allowed');
+    const readable = formatReadableServiceError(wrapped, 'Gagal menyimpan guru');
+    assert.equal(readable.needsProviderEnable, true);
+    assert.match(readable.message, /Email\/Password/);
   });
 });

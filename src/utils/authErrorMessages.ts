@@ -6,6 +6,22 @@ export interface TranslatedAuthError {
   guidance: AuthGuidanceType;
 }
 
+export function extractFirebaseErrorCode(err: unknown): string {
+  const rawCode = (err as { code?: string })?.code;
+  if (typeof rawCode === 'string' && rawCode.trim()) {
+    return rawCode.trim();
+  }
+  const msg = err instanceof Error ? err.message : String(err ?? '');
+  const authMatch = msg.match(/\((auth\/[a-z0-9-]+)\)/i) || msg.match(/\b(auth\/[a-z0-9-]+)\b/i);
+  if (authMatch?.[1]) {
+    return authMatch[1];
+  }
+  if (msg.includes('permission-denied') || msg.includes('Missing or insufficient permissions')) {
+    return 'permission-denied';
+  }
+  return '';
+}
+
 export function translateFirebaseAuthError(
   code: string,
   hostname = ''
@@ -126,4 +142,39 @@ export function translateFirebaseAuthError(
         guidance: null,
       };
   }
+}
+
+export function formatReadableServiceError(
+  err: unknown,
+  fallback: string
+): TranslatedAuthError {
+  const code = extractFirebaseErrorCode(err);
+  if (code) {
+    return translateFirebaseAuthError(code);
+  }
+  if (err instanceof Error) {
+    const raw = err.message.trim();
+    if (raw.startsWith('{') && raw.includes('"operationType"')) {
+      try {
+        const parsed = JSON.parse(raw) as { error?: string };
+        if (parsed.error) {
+          const innerCode = extractFirebaseErrorCode(new Error(parsed.error));
+          if (innerCode) {
+            return translateFirebaseAuthError(innerCode);
+          }
+          return {
+            message: `${fallback}: ${parsed.error}`,
+            needsProviderEnable: false,
+            guidance: null,
+          };
+        }
+      } catch {
+        // Fall through
+      }
+    }
+    if (raw) {
+      return { message: raw, needsProviderEnable: false, guidance: null };
+    }
+  }
+  return { message: fallback, needsProviderEnable: false, guidance: null };
 }

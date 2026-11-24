@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { KeyRound, Plus, ShieldCheck, UserCheck, UserX, X } from 'lucide-react';
+import { AlertCircle, KeyRound, Plus, ShieldCheck, UserCheck, UserX, X } from 'lucide-react';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from '../../firebase/config';
 import { useAuth } from '../../contexts/AuthContext';
@@ -10,6 +10,7 @@ import {
   toggleUserStatus,
 } from '../../services/firestoreService';
 import type { UserProfile, UserRole } from '../../types';
+import { formatReadableServiceError } from '../../utils/authErrorMessages';
 import { SkeletonTable, StatusLabel } from '../../components/UiStates';
 
 export const ManajemenAkunPage: React.FC = () => {
@@ -23,6 +24,7 @@ export const ManajemenAkunPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<UserRole>('GURU');
   const [saving, setSaving] = useState(false);
+  const [providerBannerMessage, setProviderBannerMessage] = useState<string | null>(null);
 
   const unlinkedTeachers = teachers.filter((t) => !t.userId);
 
@@ -79,12 +81,17 @@ export const ManajemenAkunPage: React.FC = () => {
         uid: userProfile.uid,
         role: userProfile.role,
       });
+      setProviderBannerMessage(null);
       showToast(`Akun login ${teacher.namaLengkap} berhasil dibuat.`, 'success');
       setModalOpen(false);
       setUsername('');
       setPassword('');
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Gagal membuat akun login.', 'error');
+      const readable = formatReadableServiceError(err, 'Gagal membuat akun login.');
+      if (readable.needsProviderEnable) {
+        setProviderBannerMessage(readable.message);
+      }
+      showToast(readable.message, 'error');
     } finally {
       setSaving(false);
     }
@@ -94,6 +101,40 @@ export const ManajemenAkunPage: React.FC = () => {
 
   return (
     <div className="space-y-5">
+      {providerBannerMessage && (
+        <div
+          role="alert"
+          className="rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/60 p-4 text-xs text-amber-900 dark:text-amber-100 flex items-start justify-between gap-3"
+        >
+          <div className="flex items-start gap-2.5">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+            <div className="space-y-1">
+              <p className="font-semibold leading-relaxed">{providerBannerMessage}</p>
+              <p className="text-[11px] text-amber-800 dark:text-amber-200">
+                Buka{' '}
+                <a
+                  href="https://console.firebase.google.com/project/awesome-incentive-c5v9p/authentication/providers"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-semibold underline hover:text-amber-950 dark:hover:text-white"
+                >
+                  Firebase Console → Authentication → Sign-in method
+                </a>{' '}
+                dan aktifkan <strong>Email/Password</strong> sebelum membuat akun login guru.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setProviderBannerMessage(null)}
+            aria-label="Tutup pemberitahuan"
+            className="p-1 rounded-lg text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/60 cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       <div className="surface-card p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="font-display text-lg font-bold text-slate-900 dark:text-white">

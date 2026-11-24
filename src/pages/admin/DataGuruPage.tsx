@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
+  AlertCircle,
   Download,
   Edit,
   Eye,
@@ -28,6 +29,7 @@ import {
   uploadFileToStorage,
 } from '../../services/firestoreService';
 import type { Teacher } from '../../types';
+import { formatReadableServiceError } from '../../utils/authErrorMessages';
 import { exportTeachersToExcel } from '../../utils/excelUtils';
 import { teacherFormSchema } from '../../utils/validationSchemas';
 import { EmptyState, SkeletonTable, StatusLabel } from '../../components/UiStates';
@@ -49,10 +51,13 @@ export const DataGuruPage: React.FC = () => {
   const [detailTeacher, setDetailTeacher] = useState<Teacher | null>(null);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
+  const [modalError, setModalError] = useState<string | null>(null);
 
   const [accountModalTeacher, setAccountModalTeacher] = useState<Teacher | null>(null);
   const [newAccUsername, setNewAccUsername] = useState('');
   const [newAccPassword, setNewAccPassword] = useState('');
+  const [accountModalError, setAccountModalError] = useState<string | null>(null);
+  const [providerBannerMessage, setProviderBannerMessage] = useState<string | null>(null);
 
   const form = useForm<TeacherFormValues>({
     resolver: zodResolver(teacherFormSchema),
@@ -96,6 +101,7 @@ export const DataGuruPage: React.FC = () => {
   const openAdd = () => {
     setEditingTeacher(null);
     setPhotoFile(null);
+    setModalError(null);
     form.reset({
       namaLengkap: '',
       nip: '',
@@ -120,6 +126,7 @@ export const DataGuruPage: React.FC = () => {
   const openEdit = (t: Teacher) => {
     setEditingTeacher(t);
     setPhotoFile(null);
+    setModalError(null);
     form.reset({
       namaLengkap: t.namaLengkap,
       nip: t.nip ?? '',
@@ -141,20 +148,42 @@ export const DataGuruPage: React.FC = () => {
     setModalOpen(true);
   };
 
+  const onInvalid = () => {
+    const msg = 'Mohon lengkapi atau perbaiki kolom formulir yang ditandai merah.';
+    setModalError(msg);
+    showToast(msg, 'error');
+  };
+
   const onSubmit = async (values: TeacherFormValues) => {
-    if (!userProfile) return;
+    if (!userProfile) {
+      const msg = 'Sesi admin belum siap. Silakan muat ulang halaman lalu coba kembali.';
+      setModalError(msg);
+      showToast(msg, 'error');
+      return;
+    }
+    setModalError(null);
     setSaving(true);
     try {
       let fotoUrl = editingTeacher?.foto ?? '';
       if (photoFile) {
-        fotoUrl = await uploadFileToStorage(
-          'teachers',
-          editingTeacher?.teacherId ?? 'profile',
-          photoFile
-        );
+        try {
+          fotoUrl = await uploadFileToStorage(
+            'teachers',
+            editingTeacher?.teacherId ?? 'profile',
+            photoFile
+          );
+        } catch (uploadErr) {
+          const uploadMsg =
+            uploadErr instanceof Error && uploadErr.message.includes('batas waktu')
+              ? uploadErr.message
+              : 'Gagal mengunggah foto ke Firebase Storage. Kosongkan pilihan foto lalu simpan data guru tanpa foto.';
+          setModalError(uploadMsg);
+          showToast(uploadMsg, 'error');
+          return;
+        }
       }
 
-      await saveTeacher(
+      const result = await saveTeacher(
         {
           teacherId: editingTeacher?.teacherId,
           userId: editingTeacher?.userId ?? '',
@@ -178,14 +207,31 @@ export const DataGuruPage: React.FC = () => {
         },
         { user: userProfile.nama, uid: userProfile.uid, role: userProfile.role }
       );
-      showToast(
-        editingTeacher ? 'Data guru berhasil diperbarui.' : 'Data guru baru berhasil disimpan.',
-        'success'
-      );
+      if (result.accountWarning) {
+        if (result.needsProviderEnable) {
+          setProviderBannerMessage(
+            `Data guru "${values.namaLengkap}" sudah tersimpan, namun akun login belum dapat dibuat otomatis karena Email/Password belum diaktifkan di Firebase Console.`
+          );
+        }
+        showToast(
+          `Data guru berhasil disimpan, namun akun login belum dibuat: ${result.accountWarning}`,
+          'warning'
+        );
+      } else {
+        setProviderBannerMessage(null);
+        showToast(
+          editingTeacher ? 'Data guru berhasil diperbarui.' : 'Data guru baru berhasil disimpan.',
+          'success'
+        );
+      }
       setModalOpen(false);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Gagal menyimpan data guru';
-      showToast(msg, 'error');
+      const readable = formatReadableServiceError(err, 'Gagal menyimpan data guru.');
+      if (readable.needsProviderEnable) {
+        setProviderBannerMessage(readable.message);
+      }
+      setModalError(readable.message);
+      showToast(readable.message, 'error');
     } finally {
       setSaving(false);
     }
@@ -201,11 +247,16 @@ export const DataGuruPage: React.FC = () => {
       danger: next === 'INACTIVE',
     });
     if (!ok) return;
-    await saveTeacher(
-      { ...t, statusAkun: next },
-      { user: userProfile.nama, uid: userProfile.uid, role: userProfile.role }
-    );
-    showToast(`Status ${t.namaLengkap} berhasil diperbarui.`, 'success');
+    try {
+      await saveTeacher(
+        { ...t, statusAkun: next },
+        { user: userProfile.nama, uid: userProfile.uid, role: userProfile.role }
+      );
+      showToast(`Status ${t.namaLengkap} berhasil diperbarui.`, 'success');
+    } catch (err) {
+      const readable = formatReadableServiceError(err, 'Gagal mengubah status guru.');
+      showToast(readable.message, 'error');
+    }
   };
 
   const handleDelete = async (t: Teacher) => {
@@ -217,12 +268,17 @@ export const DataGuruPage: React.FC = () => {
       danger: true,
     });
     if (!ok) return;
-    await deleteTeacher(t, {
-      user: userProfile.nama,
-      uid: userProfile.uid,
-      role: userProfile.role,
-    });
-    showToast('Data guru berhasil dihapus.', 'success');
+    try {
+      await deleteTeacher(t, {
+        user: userProfile.nama,
+        uid: userProfile.uid,
+        role: userProfile.role,
+      });
+      showToast('Data guru berhasil dihapus.', 'success');
+    } catch (err) {
+      const readable = formatReadableServiceError(err, 'Gagal menghapus data guru.');
+      showToast(readable.message, 'error');
+    }
   };
 
   const handleResetAccess = async (t: Teacher) => {
@@ -240,6 +296,7 @@ export const DataGuruPage: React.FC = () => {
       setAccountModalTeacher(t);
       setNewAccUsername(t.username || t.namaLengkap.toLowerCase().replace(/\s+/g, '.'));
       setNewAccPassword('');
+      setAccountModalError(null);
     }
   };
 
@@ -247,9 +304,12 @@ export const DataGuruPage: React.FC = () => {
     e.preventDefault();
     if (!accountModalTeacher || !userProfile) return;
     if (newAccUsername.trim().length < 3 || newAccPassword.length < 8) {
-      showToast('Username minimal 3 karakter dan kata sandi minimal 8 karakter.', 'error');
+      const msg = 'Username minimal 3 karakter dan kata sandi minimal 8 karakter.';
+      setAccountModalError(msg);
+      showToast(msg, 'error');
       return;
     }
+    setAccountModalError(null);
     setSaving(true);
     try {
       await provisionAccountForTeacher(
@@ -259,10 +319,16 @@ export const DataGuruPage: React.FC = () => {
         'GURU',
         { user: userProfile.nama, uid: userProfile.uid, role: userProfile.role }
       );
+      setProviderBannerMessage(null);
       showToast(`Akun login untuk ${accountModalTeacher.namaLengkap} berhasil dibuat.`, 'success');
       setAccountModalTeacher(null);
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Gagal membuat akun login guru.', 'error');
+      const readable = formatReadableServiceError(err, 'Gagal membuat akun login guru.');
+      if (readable.needsProviderEnable) {
+        setProviderBannerMessage(readable.message);
+      }
+      setAccountModalError(readable.message);
+      showToast(readable.message, 'error');
     } finally {
       setSaving(false);
     }
@@ -270,6 +336,40 @@ export const DataGuruPage: React.FC = () => {
 
   return (
     <div className="space-y-5">
+      {providerBannerMessage && (
+        <div
+          role="alert"
+          className="rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/60 p-4 text-xs text-amber-900 dark:text-amber-100 flex items-start justify-between gap-3"
+        >
+          <div className="flex items-start gap-2.5">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+            <div className="space-y-1">
+              <p className="font-semibold leading-relaxed">{providerBannerMessage}</p>
+              <p className="text-[11px] text-amber-800 dark:text-amber-200">
+                Aktifkan di{' '}
+                <a
+                  href="https://console.firebase.google.com/project/awesome-incentive-c5v9p/authentication/providers"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-semibold underline hover:text-amber-950 dark:hover:text-white"
+                >
+                  Firebase Console → Authentication → Sign-in method → Email/Password
+                </a>
+                , lalu klik ikon kunci (Buat Akun Login) pada baris guru terkait.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setProviderBannerMessage(null)}
+            aria-label="Tutup pemberitahuan"
+            className="p-1 rounded-lg text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/60 cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Toolbar */}
       <div className="surface-card p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2.5 flex-1">
@@ -502,9 +602,9 @@ export const DataGuruPage: React.FC = () => {
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 backdrop-blur-xs p-4 overflow-y-auto"
+          className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-slate-950/55 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto"
         >
-          <div className="w-full max-w-2xl surface-card p-6 shadow-2xl my-8">
+          <div className="w-full max-w-2xl surface-card p-5 sm:p-6 shadow-2xl my-auto max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-slate-800">
               <h3 className="font-display text-lg font-bold text-slate-900 dark:text-white">
                 {editingTeacher ? 'Edit Data Guru' : 'Tambah Data Guru'}
@@ -519,7 +619,17 @@ export const DataGuruPage: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={form.handleSubmit(onSubmit)} className="mt-4 space-y-4">
+            {modalError && (
+              <div
+                role="alert"
+                className="mt-4 rounded-xl border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/60 p-3 text-xs text-rose-800 dark:text-rose-200 flex items-start gap-2"
+              >
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600 dark:text-rose-400" />
+                <p className="leading-relaxed">{modalError}</p>
+              </div>
+            )}
+
+            <form onSubmit={form.handleSubmit(onSubmit, onInvalid)} className="mt-4 space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
@@ -544,6 +654,9 @@ export const DataGuruPage: React.FC = () => {
                     {...form.register('nip')}
                     className="field-input font-mono"
                   />
+                  {form.formState.errors.nip && (
+                    <p className="text-xs text-rose-600 mt-1">{form.formState.errors.nip.message}</p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
@@ -553,6 +666,9 @@ export const DataGuruPage: React.FC = () => {
                     {...form.register('nuptk')}
                     className="field-input font-mono"
                   />
+                  {form.formState.errors.nuptk && (
+                    <p className="text-xs text-rose-600 mt-1">{form.formState.errors.nuptk.message}</p>
+                  )}
                 </div>
 
                 <div>
@@ -563,6 +679,9 @@ export const DataGuruPage: React.FC = () => {
                     {...form.register('nik')}
                     className="field-input font-mono"
                   />
+                  {form.formState.errors.nik && (
+                    <p className="text-xs text-rose-600 mt-1">{form.formState.errors.nik.message}</p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
@@ -585,6 +704,11 @@ export const DataGuruPage: React.FC = () => {
                     {...form.register('tempatLahir')}
                     className="field-input"
                   />
+                  {form.formState.errors.tempatLahir && (
+                    <p className="text-xs text-rose-600 mt-1">
+                      {form.formState.errors.tempatLahir.message}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
@@ -606,6 +730,11 @@ export const DataGuruPage: React.FC = () => {
                     placeholder="S1 / S2 / D3"
                     className="field-input"
                   />
+                  {form.formState.errors.pendidikanTerakhir && (
+                    <p className="text-xs text-rose-600 mt-1">
+                      {form.formState.errors.pendidikanTerakhir.message}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
@@ -645,6 +774,11 @@ export const DataGuruPage: React.FC = () => {
                     {...form.register('nomorHp')}
                     className="field-input"
                   />
+                  {form.formState.errors.nomorHp && (
+                    <p className="text-xs text-rose-600 mt-1">
+                      {form.formState.errors.nomorHp.message}
+                    </p>
+                  )}
                 </div>
 
                 <div className="sm:col-span-2">
@@ -655,6 +789,11 @@ export const DataGuruPage: React.FC = () => {
                     {...form.register('alamat')}
                     className="field-input"
                   />
+                  {form.formState.errors.alamat && (
+                    <p className="text-xs text-rose-600 mt-1">
+                      {form.formState.errors.alamat.message}
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -666,6 +805,11 @@ export const DataGuruPage: React.FC = () => {
                     placeholder="mis. ahmad.fadloli"
                     className="field-input"
                   />
+                  {form.formState.errors.username && (
+                    <p className="text-xs text-rose-600 mt-1">
+                      {form.formState.errors.username.message}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
@@ -677,6 +821,11 @@ export const DataGuruPage: React.FC = () => {
                     placeholder="Opsional (otomatis jika kosong)"
                     className="field-input"
                   />
+                  {form.formState.errors.email && (
+                    <p className="text-xs text-rose-600 mt-1">
+                      {form.formState.errors.email.message}
+                    </p>
+                  )}
                 </div>
 
                 {!editingTeacher && (
@@ -690,6 +839,15 @@ export const DataGuruPage: React.FC = () => {
                       placeholder="Min. 8 karakter untuk langsung buat akun"
                       className="field-input"
                     />
+                    {form.formState.errors.passwordAwal && (
+                      <p className="text-xs text-rose-600 mt-1">
+                        {form.formState.errors.passwordAwal.message}
+                      </p>
+                    )}
+                    <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                      Memerlukan provider Email/Password aktif di Firebase Console. Kosongkan jika
+                      ingin membuat akun guru nanti.
+                    </p>
                   </div>
                 )}
 
@@ -697,18 +855,30 @@ export const DataGuruPage: React.FC = () => {
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
                     Foto Profil (Firebase Storage)
                   </label>
-                  <label className="flex items-center gap-2.5 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 px-3.5 py-2.5 text-xs font-medium text-slate-600 dark:text-slate-300 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors">
-                    <Upload className="w-4 h-4 text-slate-400 shrink-0" />
-                    <span className="truncate">
-                      {photoFile ? photoFile.name : 'Pilih file foto (.jpg/.png)'}
-                    </span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => setPhotoFile(e.target.files?.[0] ?? null)}
-                    />
-                  </label>
+                  <div className="flex items-center gap-2">
+                    <label className="flex-1 flex items-center gap-2.5 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 px-3.5 py-2.5 text-xs font-medium text-slate-600 dark:text-slate-300 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors min-w-0">
+                      <Upload className="w-4 h-4 text-slate-400 shrink-0" />
+                      <span className="truncate">
+                        {photoFile ? photoFile.name : 'Pilih file foto (.jpg/.png)'}
+                      </span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => setPhotoFile(e.target.files?.[0] ?? null)}
+                      />
+                    </label>
+                    {photoFile && (
+                      <button
+                        type="button"
+                        onClick={() => setPhotoFile(null)}
+                        aria-label="Hapus pilihan foto"
+                        className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-rose-600 cursor-pointer"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -828,6 +998,15 @@ export const DataGuruPage: React.FC = () => {
               </button>
             </div>
             <form onSubmit={handleProvisionAccount} className="mt-4 space-y-4">
+              {accountModalError && (
+                <div
+                  role="alert"
+                  className="rounded-xl border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/60 p-3 text-xs text-rose-800 dark:text-rose-200 flex items-start gap-2"
+                >
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600 dark:text-rose-400" />
+                  <p className="leading-relaxed">{accountModalError}</p>
+                </div>
+              )}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
                   Username atau Email

@@ -48,6 +48,14 @@ import {
   sanitizeId,
   sanitizeString,
 } from '../utils/attendanceLogic';
+import { formatReadableServiceError } from '../utils/authErrorMessages';
+
+export interface SaveTeacherResult {
+  teacherId: string;
+  accountCreated: boolean;
+  accountWarning?: string;
+  needsProviderEnable?: boolean;
+}
 
 function makeId(prefix: string): string {
   const rand = Math.random().toString(36).slice(2, 8);
@@ -255,7 +263,18 @@ export async function uploadFileToStorage(
     ? `${folder}/${sanitizeId(subPath)}/${Date.now()}_${safeName}`
     : `${folder}/${Date.now()}_${safeName}`;
   const storageRef = ref(storage, fullPath);
-  const snapshot = await uploadBytes(storageRef, file);
+  const timeoutPromise = new Promise<never>((_, reject) =>
+    setTimeout(
+      () =>
+        reject(
+          new Error(
+            'Upload foto ke Firebase Storage melewati batas waktu. Pastikan Firebase Storage aktif atau kosongkan foto terlebih dahulu.'
+          )
+        ),
+      10000
+    )
+  );
+  const snapshot = await Promise.race([uploadBytes(storageRef, file), timeoutPromise]);
   return getDownloadURL(snapshot.ref);
 }
 
@@ -358,23 +377,38 @@ export async function saveTeacher(
     passwordAwal?: string;
   },
   actor: { user: string; uid: string; role: UserRole }
-): Promise<string> {
+): Promise<SaveTeacherResult> {
   const isEdit = Boolean(input.teacherId);
   const teacherId = sanitizeId(input.teacherId || makeId('tch'));
   const path = `teachers/${teacherId}`;
 
-  try {
-    let linkedUserId = input.userId ?? '';
-    const loginEmail = input.email
-      ? input.email.trim().toLowerCase()
-      : input.username
-        ? normalizeLoginIdentifier(input.username)
-        : '';
+  let linkedUserId = input.userId ?? '';
+  let accountCreated = false;
+  let accountWarning: string | undefined;
+  let needsProviderEnable = false;
 
-    if (!isEdit && input.passwordAwal && loginEmail) {
+  const loginEmail = input.email
+    ? input.email.trim().toLowerCase()
+    : input.username
+      ? normalizeLoginIdentifier(input.username)
+      : '';
+
+  if (!isEdit && input.passwordAwal && loginEmail) {
+    try {
       linkedUserId = await createSecondaryAuthUser(loginEmail, input.passwordAwal);
+      accountCreated = true;
+    } catch (authErr) {
+      const readable = formatReadableServiceError(
+        authErr,
+        'Akun login guru belum dapat dibuat.'
+      );
+      accountWarning = readable.message;
+      needsProviderEnable = readable.needsProviderEnable;
+      linkedUserId = '';
     }
+  }
 
+  try {
     const batch = writeBatch(db);
     const payload: Record<string, unknown> = {
       teacherId,
@@ -427,12 +461,16 @@ export async function saveTeacher(
     }
 
     await batch.commit();
-    await writeAuditLog({
-      ...actor,
-      aktivitas: isEdit ? 'Mengubah data guru' : 'Menambah data guru baru',
-      data: input.namaLengkap,
-    });
-    return teacherId;
+    try {
+      await writeAuditLog({
+        ...actor,
+        aktivitas: isEdit ? 'Mengubah data guru' : 'Menambah data guru baru',
+        data: input.namaLengkap,
+      });
+    } catch {
+      // Non-fatal: teacher document has already committed
+    }
+    return { teacherId, accountCreated, accountWarning, needsProviderEnable };
   } catch (error) {
     handleFirestoreError(error, isEdit ? OperationType.UPDATE : OperationType.CREATE, path);
   }
@@ -446,34 +484,48 @@ export async function provisionAccountForTeacher(
   actor: { user: string; uid: string; role: UserRole }
 ): Promise<string> {
   const authEmail = normalizeLoginIdentifier(usernameOrEmail);
-  const newUid = await createSecondaryAuthUser(authEmail, passwordAwal);
-  const batch = writeBatch(db);
-  batch.set(doc(db, 'users', newUid), {
-    uid: newUid,
-    nama: sanitizeString(teacher.namaLengkap, 120),
-    email: sanitizeString(authEmail, 160),
-    username: sanitizeString(usernameOrEmail.trim(), 64),
-    role,
-    teacherId: teacher.teacherId,
-    status: 'ACTIVE',
-    photoUrl: sanitizeString(teacher.foto ?? '', 500),
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
-  batch.update(doc(db, 'teachers', teacher.teacherId), {
-    userId: newUid,
-    email: sanitizeString(authEmail, 160),
-    username: sanitizeString(usernameOrEmail.trim(), 64),
-    statusAkun: 'ACTIVE',
-    updatedAt: serverTimestamp(),
-  });
-  await batch.commit();
-  await writeAuditLog({
-    ...actor,
-    aktivitas: 'Membuat akun login baru untuk guru',
-    data: `${teacher.namaLengkap} (${role})`,
-  });
-  return newUid;
+  let newUid = '';
+  try {
+    newUid = await createSecondaryAuthUser(authEmail, passwordAwal);
+  } catch (authErr) {
+    const readable = formatReadableServiceError(authErr, 'Gagal membuat akun Firebase Auth guru.');
+    const customErr = new Error(readable.message) as Error & { needsProviderEnable?: boolean };
+    customErr.needsProviderEnable = readable.needsProviderEnable;
+    throw customErr;
+  }
+
+  const path = `users/${newUid}`;
+  try {
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'users', newUid), {
+      uid: newUid,
+      nama: sanitizeString(teacher.namaLengkap, 120),
+      email: sanitizeString(authEmail, 160),
+      username: sanitizeString(usernameOrEmail.trim(), 64),
+      role,
+      teacherId: teacher.teacherId,
+      status: 'ACTIVE',
+      photoUrl: sanitizeString(teacher.foto ?? '', 500),
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    batch.update(doc(db, 'teachers', teacher.teacherId), {
+      userId: newUid,
+      email: sanitizeString(authEmail, 160),
+      username: sanitizeString(usernameOrEmail.trim(), 64),
+      statusAkun: 'ACTIVE',
+      updatedAt: serverTimestamp(),
+    });
+    await batch.commit();
+    await writeAuditLog({
+      ...actor,
+      aktivitas: 'Membuat akun login baru untuk guru',
+      data: `${teacher.namaLengkap} (${role})`,
+    });
+    return newUid;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
 }
 
 export async function deleteTeacher(

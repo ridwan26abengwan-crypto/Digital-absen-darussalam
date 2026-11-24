@@ -29,7 +29,11 @@ import {
 import { ensureDefaultSchoolDocs, writeAuditLog } from '../services/firestoreService';
 import type { UserProfile } from '../types';
 import { normalizeLoginIdentifier, sanitizeString } from '../utils/attendanceLogic';
-import { translateFirebaseAuthError, type AuthGuidanceType } from '../utils/authErrorMessages';
+import {
+  extractFirebaseErrorCode as extractErrorCode,
+  translateFirebaseAuthError,
+  type AuthGuidanceType,
+} from '../utils/authErrorMessages';
 
 interface AuthContextValue {
   firebaseUser: User | null;
@@ -54,18 +58,6 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 const BOOTSTRAP_ADMIN_EMAIL = 'rdwanwannn@gmail.com';
-
-function extractErrorCode(err: unknown): string {
-  const rawCode = (err as { code?: string })?.code;
-  if (typeof rawCode === 'string' && rawCode.trim()) {
-    return rawCode.trim();
-  }
-  const msg = err instanceof Error ? err.message : String(err ?? '');
-  if (msg.includes('permission-denied') || msg.includes('Missing or insufficient permissions')) {
-    return 'permission-denied';
-  }
-  return '';
-}
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);

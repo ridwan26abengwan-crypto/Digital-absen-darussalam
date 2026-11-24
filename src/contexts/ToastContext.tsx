@@ -59,7 +59,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       {/* Toast Stack */}
       <div
         aria-live="polite"
-        className="fixed bottom-4 right-4 z-50 flex flex-col gap-2.5 max-w-sm w-full pointer-events-none px-4 sm:px-0"
+        className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2.5 max-w-sm w-full pointer-events-none px-4 sm:px-0"
       >
         {toasts.map((toast) => (
           <div
@@ -98,7 +98,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 backdrop-blur-xs p-4"
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/55 backdrop-blur-xs p-4"
         >
           <div className="w-full max-w-md surface-card p-6 shadow-2xl">
             <h3 className="font-display text-lg font-bold text-slate-900 dark:text-slate-100">

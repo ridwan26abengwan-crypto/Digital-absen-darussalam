@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
+  AlertCircle,
   Download,
   Edit,
   Eye,
@@ -22,6 +23,7 @@ import {
   uploadFileToStorage,
 } from '../../services/firestoreService';
 import type { Student } from '../../types';
+import { formatReadableServiceError } from '../../utils/authErrorMessages';
 import { exportStudentsToExcel } from '../../utils/excelUtils';
 import { studentFormSchema } from '../../utils/validationSchemas';
 import { EmptyState, SkeletonTable, StatusLabel } from '../../components/UiStates';
@@ -45,6 +47,7 @@ export const DataSiswaPage: React.FC = () => {
   const [detailStudent, setDetailStudent] = useState<Student | null>(null);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
+  const [modalError, setModalError] = useState<string | null>(null);
 
   const form = useForm<StudentFormValues>({
     resolver: zodResolver(studentFormSchema),
@@ -86,6 +89,7 @@ export const DataSiswaPage: React.FC = () => {
   const openAdd = () => {
     setEditingStudent(null);
     setPhotoFile(null);
+    setModalError(null);
     form.reset({
       nis: '',
       nisn: '',
@@ -108,6 +112,7 @@ export const DataSiswaPage: React.FC = () => {
   const openEdit = (s: Student) => {
     setEditingStudent(s);
     setPhotoFile(null);
+    setModalError(null);
     form.reset({
       nis: s.nis,
       nisn: s.nisn ?? '',
@@ -127,23 +132,42 @@ export const DataSiswaPage: React.FC = () => {
     setModalOpen(true);
   };
 
+  const onInvalid = () => {
+    const msg = 'Mohon lengkapi atau perbaiki kolom formulir yang ditandai merah.';
+    setModalError(msg);
+    showToast(msg, 'error');
+  };
+
   const onSubmit = async (values: StudentFormValues) => {
     if (!userProfile) return;
     const selectedClass = classes.find((c) => c.classId === values.classId);
     if (!selectedClass) {
-      showToast('Pilih kelas / rombel yang valid terlebih dahulu.', 'error');
+      const msg = 'Pilih kelas / rombel yang valid terlebih dahulu.';
+      setModalError(msg);
+      showToast(msg, 'error');
       return;
     }
 
+    setModalError(null);
     setSaving(true);
     try {
       let fotoUrl = editingStudent?.foto ?? '';
       if (photoFile) {
-        fotoUrl = await uploadFileToStorage(
-          'students',
-          editingStudent?.studentId ?? 'profile',
-          photoFile
-        );
+        try {
+          fotoUrl = await uploadFileToStorage(
+            'students',
+            editingStudent?.studentId ?? 'profile',
+            photoFile
+          );
+        } catch (uploadErr) {
+          const uploadMsg =
+            uploadErr instanceof Error && uploadErr.message.includes('batas waktu')
+              ? uploadErr.message
+              : 'Gagal mengunggah foto ke Firebase Storage. Kosongkan foto untuk menyimpan data siswa.';
+          setModalError(uploadMsg);
+          showToast(uploadMsg, 'error');
+          return;
+        }
       }
 
       await saveStudent(
@@ -162,7 +186,9 @@ export const DataSiswaPage: React.FC = () => {
       );
       setModalOpen(false);
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Gagal menyimpan data siswa', 'error');
+      const readable = formatReadableServiceError(err, 'Gagal menyimpan data siswa.');
+      setModalError(readable.message);
+      showToast(readable.message, 'error');
     } finally {
       setSaving(false);
     }
@@ -387,7 +413,17 @@ export const DataSiswaPage: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={form.handleSubmit(onSubmit)} className="mt-4 space-y-4">
+            {modalError && (
+              <div
+                role="alert"
+                className="mt-4 rounded-xl border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/60 p-3 text-xs text-rose-800 dark:text-rose-200 flex items-start gap-2"
+              >
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600 dark:text-rose-400" />
+                <p className="leading-relaxed">{modalError}</p>
+              </div>
+            )}
+
+            <form onSubmit={form.handleSubmit(onSubmit, onInvalid)} className="mt-4 space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
